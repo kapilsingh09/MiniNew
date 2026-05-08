@@ -1,0 +1,166 @@
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   AUTOMATED DATA ANALYSIS REPORT                           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+Generated: 2026-05-08 10:56:54
+Target Column: age
+Dataset Shape: (500, 11)
+Files Analyzed: 500 rows × 11 columns
+
+────────────────────────────────────────────────────────────────────────────────
+
+═════════════════════════════════════════════════════════════
+                    DATASET OVERVIEW
+═════════════════════════════════════════════════════════════
+• **Total Observations:** 500 rows
+• **Feature Count:** 11 columns (10 features + 1 target)
+• **Memory Footprint:** 42.08 KB (Very low, fits easily in memory)
+• **Data Types:** 
+    - Numeric: 5 (`age`, `study_hours_per_week`, `attendance_rate`, `previous_score`, `final_score`)
+    - Categorical/Object: 6 (`student_id`, `gender`, `parent_education`, `internet_access`, `extracurricular`, `passed`)
+• **Target Variable:** `age` (Specified by user)
+
+═════════════════════════════════════════════════════════════
+                  DATA QUALITY ISSUES
+═════════════════════════════════════════════════════════════
+• **Missing Data:** `parent_education` contains 117 missing values (23.4%). This is the only column with nulls.
+• **High Cardinality:** `student_id` is unique for every row (100% uniqueness), rendering it useless for predictive modeling.
+• **Potential Feature Leakage:** `passed` and `final_score` are likely mathematically related. If the goal is to predict a student characteristic like `age`, this is less of a risk than if we were predicting performance, but they are highly redundant features.
+• **Weak Signal:** The target variable `age` has very low correlation with all other features (max absolute correlation is 0.10 with `previous_score`).
+
+═════════════════════════════════════════════════════════════
+                 MISSING VALUE ANALYSIS
+═════════════════════════════════════════════════════════════
+• **Feature:** `parent_education`
+• **Null Percentage:** 23.4%
+• **Mechanism:** Appears to be Missing At Random (MAR). 
+• **Impact:** Since this is a categorical variable with 4 levels (Master, Bachelor, High School, PhD), 23.4% missingness is significant. Removing these rows would reduce the dataset size to 383, which is too small. 
+• **Recommendation:** Categorical imputation using "Unknown" as a new class or Mode imputation.
+
+═════════════════════════════════════════════════════════════
+                  DUPLICATE ANALYSIS
+═════════════════════════════════════════════════════════════
+• **Exact Duplicates:** 0 rows (0.0%).
+• **Near-Duplicates:** No evidence of duplicate student profiles with different IDs.
+• **Conclusion:** The dataset is clean regarding redundant observations.
+
+═════════════════════════════════════════════════════════════
+               NUMERICAL FEATURE ANALYSIS
+═════════════════════════════════════════════════════════════
+• **Study Hours:** Ranges from 2 to 30 hours. High variance (73.41).
+• **Attendance Rate:** Ranges from 50.2% to 100%. Mean (76.38%) is close to median (76.5%), suggesting a normal-ish distribution.
+• **Scores:** `final_score` (20-95) and `previous_score` (30-95) show a wide range of academic performance.
+• **Skewness:** All numerical features show low skewness (|Skew| < 0.1). No aggressive log transformations are required for distribution centering.
+• **Kurtosis:** Most features show negative kurtosis (platykurtic), indicating thinner tails and fewer extreme outliers than a normal distribution.
+
+═════════════════════════════════════════════════════════════
+              CATEGORICAL FEATURE ANALYSIS
+═════════════════════════════════════════════════════════════
+• **Binary Features:** `gender`, `internet_access`, `extracurricular`, `passed`. These are well-balanced (approx. 50/50 splits), which is excellent for model stability.
+• **Ordinal Potential:** `parent_education` (High School < Bachelor < Master < PhD) should be treated as ordinal rather than nominal to capture the hierarchy.
+• **High Cardinality:** `student_id` (500 unique values). This must be dropped.
+
+═════════════════════════════════════════════════════════════
+                   OUTLIER ANALYSIS
+═════════════════════════════════════════════════════════════
+• **Detection:** Based on the min/max values relative to the 25%/75% quantiles, there are no extreme mathematical outliers in the scores or hours.
+• **Target (Age):** Fixed range 15-19. No outliers.
+• **Note:** Negative kurtosis across the board suggests the data is well-bounded within its ranges.
+
+═════════════════════════════════════════════════════════════
+            CORRELATION & MULTICOLLINEARITY
+═════════════════════════════════════════════════════════════
+• **Strong Multi-collinearity:** `study_hours_per_week` and `final_score` have a correlation of **0.803**. This is very high. If using a linear model, one should be dropped or combined.
+• **Target Correlation:** `age` (Target) has almost no linear relationship with other features.
+    - `previous_score`: -0.106
+    - `study_hours`: -0.055
+    - `final_score`: -0.047
+• **Insight:** The dataset features are designed to predict academic success, not the student's age. Predicting age will be a difficult "signal-to-noise" challenge.
+
+═════════════════════════════════════════════════════════════
+              FEATURE ENGINEERING IDEAS
+═════════════════════════════════════════════════════════════
+1. **Total Engagement Score:** `study_hours_per_week` * `attendance_rate`. Combines presence with effort.
+2. **Score Progress:** `final_score` - `previous_score`. Captures whether a student is improving, which might correlate with maturity/age.
+3. **Resource Access:** Interaction between `internet_access` and `parent_education`.
+4. **Efficiency:** `final_score` / `study_hours_per_week`.
+
+═════════════════════════════════════════════════════════════
+             PREPROCESSING RECOMMENDATIONS
+═════════════════════════════════════════════════════════════
+1. **Step:** Feature Dropping
+   - **Target Columns:** `student_id`
+   - **Technique:** Drop column
+   - **Justification:** Unique identifier with no predictive power.
+   - **Expected Impact:** Prevents overfitting and reduces noise.
+
+2. **Step:** Categorical Imputation
+   - **Target Columns:** `parent_education`
+   - **Technique:** Constant Imputation ("Unknown")
+   - **Justification:** 23% is too much to drop. Mode imputation might bias the distribution.
+   - **Expected Impact:** Retains all 500 rows for training.
+
+3. **Step:** Ordinal Encoding
+   - **Target Columns:** `parent_education`
+   - **Technique:** Mapping: {'High School': 1, 'Bachelor': 2, 'Master': 3, 'PhD': 4, 'Unknown': 0}
+   - **Justification:** Education levels have a natural rank.
+   - **Expected Impact:** Allows the model to understand the hierarchical nature of the feature.
+
+4. **Step:** Binary Encoding (Label Encoding)
+   - **Target Columns:** `gender`, `internet_access`, `extracurricular`, `passed`
+   - **Technique:** Map to 0 and 1
+   - **Justification:** Converts object types to numeric for ML algorithms.
+   - **Expected Impact:** Necessary for model compatibility.
+
+5. **Step:** Scaling
+   - **Target Columns:** All numeric features
+   - **Technique:** Standard Scaler (Z-score normalization)
+   - **Justification:** Numeric ranges differ significantly (e.g., hours 2-30 vs score 20-95).
+   - **Expected Impact:** Ensures features with larger scales do not dominate the model (especially for Ridge/Lasso or KNN).
+
+═════════════════════════════════════════════════════════════
+                   COLUMNS TO DROP
+═════════════════════════════════════════════════════════════
+• **student_id:** Primary key; 100% unique; leads to identity mapping/overfitting.
+• **passed:** (Optional) If predicting age, this is likely a proxy for `final_score`. If redundant, drop to reduce multicollinearity.
+
+═════════════════════════════════════════════════════════════
+              MACHINE LEARNING READINESS
+═════════════════════════════════════════════════════════════
+• **Score: 65/100**
+• **Reasoning:** 
+    - Pros: No duplicates, clear numeric types, balanced binary classes. 
+    - Cons: Small sample size (N=500), significant missing values in a key feature, and most importantly, the features show almost **no correlation to the target (age)**. The "Readiness" is high for a performance prediction task, but low for an age prediction task.
+
+═════════════════════════════════════════════════════════════
+               RECOMMENDED ML MODELS
+═════════════════════════════════════════════════════════════
+• **Problem Type:** Multi-class Classification (as Age is discrete 15, 16, 17, 18, 19) or Regression. Given the 5 discrete levels, Classification is better.
+• **Model 1: Random Forest Classifier**
+    - **Rationale:** Handles mixed data types and captures non-linear relationships better than linear models, which is crucial given the low linear correlation.
+• **Model 2: Gradient Boosting (XGBoost/LightGBM)**
+    - **Rationale:** Good at extracting weak signals from noisy data.
+• **Model 3: Ridge Classifier**
+    - **Rationale:** Simple baseline that handles multicollinearity (between study hours and score) via L2 regularization.
+
+═════════════════════════════════════════════════════════════
+               RISKS & LIMITATIONS
+═════════════════════════════════════════════════════════════
+• **Low Signal-to-Noise Ratio:** Predicting `age` from this data is fundamentally difficult. It is unlikely that `study_hours` or `internet_access` are strong predictors of whether a student is 16 vs 17.
+• **Overfitting:** With only 500 rows, complex models like deep neural networks will overfit immediately. Stick to tree-based models with shallow depth.
+• **Imputation Bias:** The 23.4% missingness in `parent_education` might hide a specific demographic pattern that "Unknown" imputation won't fully capture.
+
+═════════════════════════════════════════════════════════════
+                   FINAL SUMMARY
+═════════════════════════════════════════════════════════════
+This dataset is well-structured but presents a significant predictive challenge for the target `age`. The data shows that while we can likely predict student performance (due to the high correlation between hours and scores), predicting the student's age from these variables is an "uphill battle." 
+
+**Immediate Next Steps:**
+1. Drop `student_id`.
+2. Impute `parent_education` and convert to ordinal.
+3. Use a Tree-based Classifier (Random Forest) as the baseline.
+4. Perform feature engineering (Progress Score) to see if maturity-based trends emerge.
+
+────────────────────────────────────────────────────────────────────────────────
+Report End: 2026-05-08 10:56:54
