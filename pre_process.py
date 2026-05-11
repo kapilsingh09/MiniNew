@@ -385,10 +385,10 @@ def run_analysis(
 
     # 1. Correlation analysis
     corr_drop_cols, corr_pairs = get_highly_correlated_columns(df, threshold=0.90)
-    print(f"  🔗 Highly correlated drop candidates: {corr_drop_cols or 'None'}")
+    print(f"  [CORR] Highly correlated drop candidates: {corr_drop_cols or 'None'}")
 
     # 2. Full dataframe analysis
-    print("  📊 Running statistical analysis...")
+    print("  [STATS] Running statistical analysis...")
     analysis_result = analyze_dataframe(df, corr_drop_cols, corr_pairs)
 
     # 3. Build prompt
@@ -404,7 +404,7 @@ def run_analysis(
 
     # 4. Call Gemini
     client = genai.Client(api_key=api_key)
-    print("  🤖 Calling Gemini for AI analysis...")
+    print("  [AI] Calling Gemini for AI analysis...")
     response_text = None
     for attempt in range(3):
         try:
@@ -415,7 +415,7 @@ def run_analysis(
             response_text = response.text
             break
         except Exception as e:
-            print(f"  ⚠️  Attempt {attempt + 1} failed: {e}")
+            print(f"  [WARN] Attempt {attempt + 1} failed: {e}")
             if attempt < 2:
                 print("  Retrying in 3 seconds...")
                 time.sleep(3)
@@ -425,30 +425,30 @@ def run_analysis(
     # 5. Save report
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     report_header = f"""
-╔════════════════════════════════════════════════════════════════════════════╗
-║                   AUTOMATED DATA ANALYSIS REPORT                         ║
-╚════════════════════════════════════════════════════════════════════════════╝
+========================================================================
+                   AUTOMATED DATA ANALYSIS REPORT
+========================================================================
 
 Generated   : {timestamp}
 Target Col  : {target_column}
 Task Type   : {task_type.upper()}
-Dataset     : {df.shape[0]} rows × {df.shape[1]} columns
+Dataset     : {df.shape[0]} rows x {df.shape[1]} columns
 Memory      : {round(df.memory_usage(deep=True).sum() / 1024**2, 2)} MB
 Corr Drops  : {corr_drop_cols if corr_drop_cols else "None detected"}
 
-{'─' * 80}
+{'_' * 80}
 
 """
 
     formatted_report = (
         report_header
         + response_text
-        + f"\n\n{'─' * 80}\nReport End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        + f"\n\n{'_' * 80}\nReport End: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     )
 
     report_path = os.path.join(project_dir, "analysis_report.txt")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(formatted_report)
 
-    print(f"  ✅ Analysis complete  |  Task: {task_type.upper()}  |  Target: {target_column}")
+    print(f"  [OK] Analysis complete  |  Task: {task_type.upper()}  |  Target: {target_column}")
     return report_path
