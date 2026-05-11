@@ -1,82 +1,100 @@
+"""
+╔══════════════════════════════════════════════════════════════╗
+║          AI PREPROCESSING — data_processing.py               ║
+║                                                              ║
+║  Receives raw DataFrame + analysis report from main.py.      ║
+║  Uses two Gemini calls:                                      ║
+║    AI-1  →  Build a preprocessing plan (JSON)                ║
+║    AI-2  →  Review the applied pipeline                      ║
+║  Returns the clean DataFrame, plan, and review.              ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+
+import os
+import sys
+import json
+import re
+import time
+import threading
+import itertools
+import pandas as pd
 from google import genai
-from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import (
     StandardScaler, MinMaxScaler, RobustScaler,
-    OneHotEncoder, OrdinalEncoder, LabelEncoder
+    OneHotEncoder, OrdinalEncoder, LabelEncoder,
 )
-from main import load_data, what_to_predict
-import os, json, re, time, threading, itertools, sys
-import pandas as pd
+
 
 # ─────────────────────────────────────────────
-# LOAD
+# SPINNER (console progress indicator)
 # ─────────────────────────────────────────────
-load_dotenv()
-df            = load_data()
-target_column = what_to_predict()
-client        = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
-# ─────────────────────────────────────────────
-# SPINNER
-# ─────────────────────────────────────────────
-def spinner_while(label="Thinking"):
+def spinner_while(label: str = "Thinking"):
+    """Start a console spinner. Returns a threading.Event to stop it."""
     stop_event = threading.Event()
+
     def spin():
-        for frame in itertools.cycle(["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]):
-            if stop_event.is_set(): break
+        for frame in itertools.cycle(["|", "/", "-", "\\"]):
+            if stop_event.is_set():
+                break
             sys.stdout.write(f"\r{frame}  {label}...")
             sys.stdout.flush()
             time.sleep(0.08)
-        sys.stdout.write(f"\r✅  {label} done!          \n")
+        sys.stdout.write(f"\r[OK] {label} done!          \n")
         sys.stdout.flush()
-    threading.Thread(target=spin).start()
+
+    threading.Thread(target=spin, daemon=True).start()
     return stop_event
 
+
 # ─────────────────────────────────────────────
-# GEMINI CALL (with retry)
+# GEMINI CALL (with retry + spinner)
 # ─────────────────────────────────────────────
-def call_gemini(prompt, label="Gemini"):
+def call_gemini(client, prompt: str, label: str = "Gemini") -> str:
+    """Call Gemini with retries and a spinner."""
     stop = spinner_while(label)
     for attempt in range(3):
         try:
             r = client.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=prompt
+                model="gemini-2.0-flash",
+                contents=prompt,
             )
             stop.set()
             return r.text.strip()
         except Exception as e:
             stop.set()
-            print(f"\n⚠️  Attempt {attempt+1} failed: {e}")
+            print(f"\n[WARN] Attempt {attempt + 1} failed: {e}")
             if attempt < 2:
                 time.sleep(10)
                 stop = spinner_while(f"Retrying {label}")
             else:
                 raise
 
+
 # ─────────────────────────────────────────────
 # PREPROCESSING FUNCTIONS
 # ─────────────────────────────────────────────
-def drop_columns(df, cols):
+def drop_columns(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     cols = [c for c in cols if c in df.columns]
     if cols:
-        print(f"  🗑️  Dropping: {cols}")
+        print(f"  [DROP] Dropping: {cols}")
     return df.drop(columns=cols)
 
-def apply_imputer(df, col, strategy):
-    if col not in df.columns or col == target_column:
+
+def apply_imputer(df: pd.DataFrame, col: str, strategy: str, target: str) -> pd.DataFrame:
+    if col not in df.columns or col == target:
         return df
     df[col] = SimpleImputer(strategy=strategy).fit_transform(df[[col]])
-    print(f"  🔧 Imputed  [{col}] → {strategy}")
+    print(f"  [IMPUTE] Imputed  [{col}] -> {strategy}")
     return df
 
-def apply_encoder(df, col, method):
-    if col not in df.columns or col == target_column:
+
+def apply_encoder(df: pd.DataFrame, col: str, method: str, target: str) -> pd.DataFrame:
+    if col not in df.columns or col == target:
         return df
     if method == "onehot":
-        enc     = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         encoded = enc.fit_transform(df[[col]])
         new_cols = [f"{col}_{c}" for c in enc.categories_[0]]
         df = df.drop(columns=[col])
@@ -87,39 +105,51 @@ def apply_encoder(df, col, method):
         ).fit_transform(df[[col]])
     elif method == "label":
         df[col] = LabelEncoder().fit_transform(df[col].astype(str))
-    print(f"  🔤 Encoded  [{col}] → {method}")
+    print(f"  [ENCODE] Encoded  [{col}] -> {method}")
     return df
 
-def apply_scaler(df, cols, method):
-    cols = [c for c in cols if c in df.columns and c != target_column]
-    if not cols: return df
-    scaler = {"standard": StandardScaler(),
-               "minmax":   MinMaxScaler(),
-               "robust":   RobustScaler()}[method]
+
+def apply_scaler(df: pd.DataFrame, cols: list, method: str, target: str) -> pd.DataFrame:
+    cols = [c for c in cols if c in df.columns and c != target]
+    if not cols:
+        return df
+    scaler = {
+        "standard": StandardScaler(),
+        "minmax": MinMaxScaler(),
+        "robust": RobustScaler(),
+    }[method]
     df[cols] = scaler.fit_transform(df[cols])
-    print(f"  📏 Scaled   {cols} → {method}")
+    print(f"  [SCALE] Scaled   {cols} -> {method}")
     return df
 
-# ─────────────────────────────────────────────
-# LOAD ANALYSIS REPORT
-# ─────────────────────────────────────────────
-file_path = r"C:\Users\karan\Desktop\Sleepyy\analysis_report.txt"
-with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-    analysis_report = f.read()[:15000]
 
 # ─────────────────────────────────────────────
-# TRAIN TEST SPLIT
+# PUBLIC ENTRY POINT — called from main.py
 # ─────────────────────────────────────────────
-X = df.drop(columns=[target_column])
-y = df[target_column]
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
+def run_preprocessing(
+    df: pd.DataFrame,
+    target_column: str,
+    task_type: str,
+    report_path: str,
+    project_dir: str,
+) -> tuple:
+    """
+    Run the two-AI preprocessing pipeline.
+    Returns (clean_df, plan_dict, review_dict).
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise EnvironmentError("GOOGLE_API_KEY not found. Check your .env file.")
+    client = genai.Client(api_key=api_key)
 
-# ─────────────────────────────────────────────
-# GEMINI 1 — PREPROCESSING PLAN
-# ─────────────────────────────────────────────
-prompt_1 = f"""
+    # ── Load the analysis report
+    with open(report_path, "r", encoding="utf-8", errors="ignore") as f:
+        analysis_report = f.read()[:15000]
+
+    # ══════════════════════════════════════════
+    # AI-1 — PREPROCESSING PLAN
+    # ══════════════════════════════════════════
+    prompt_1 = f"""
 You are a Senior ML Engineer.
 
 Return a STRICT JSON preprocessing plan based on the dataset analysis report below.
@@ -150,8 +180,7 @@ JSON FORMAT:
 
 Dataset columns : {df.columns.tolist()}
 Target column   : {target_column}
-Train shape     : {X_train.shape}
-Test shape      : {X_test.shape}
+Dataset shape   : {df.shape}
 
 Dataset head:
 {df.head().to_string()}
@@ -160,45 +189,45 @@ ANALYSIS REPORT:
 {analysis_report}
 """
 
-raw_1 = call_gemini(prompt_1, "Gemini 1 — building preprocessing plan")
-raw_1 = re.sub(r"```json|```", "", raw_1).strip()
-plan  = json.loads(raw_1)
+    raw_1 = call_gemini(client, prompt_1, "AI-1 — Building preprocessing plan")
+    raw_1 = re.sub(r"```json|```", "", raw_1).strip()
+    plan = json.loads(raw_1)
 
-print("\n📋 PREPROCESSING PLAN:")
-print(json.dumps(plan, indent=2))
+    print("\n[PLAN] PREPROCESSING PLAN:")
+    print(json.dumps(plan, indent=2))
 
-# ─────────────────────────────────────────────
-# EXECUTE PREPROCESSING
-# ─────────────────────────────────────────────
-print("\n⚙️  Applying preprocessing...\n")
-clean_df = df.copy()
+    # ══════════════════════════════════════════
+    # EXECUTE PREPROCESSING
+    # ══════════════════════════════════════════
+    print("\n[RUN] Applying preprocessing...\n")
+    clean_df = df.copy()
 
-clean_df = drop_columns(clean_df, plan.get("drop_columns", []))
+    clean_df = drop_columns(clean_df, plan.get("drop_columns", []))
 
-for item in plan.get("impute", []):
-    clean_df = apply_imputer(clean_df, item["column"], item["strategy"])
+    for item in plan.get("impute", []):
+        clean_df = apply_imputer(clean_df, item["column"], item["strategy"], target_column)
 
-for item in plan.get("encode", []):
-    clean_df = apply_encoder(clean_df, item["column"], item["method"])
+    for item in plan.get("encode", []):
+        clean_df = apply_encoder(clean_df, item["column"], item["method"], target_column)
 
-for method, cols in plan.get("scale", {}).items():
-    clean_df = apply_scaler(clean_df, cols, method)
+    for method, cols in plan.get("scale", {}).items():
+        clean_df = apply_scaler(clean_df, cols, method, target_column)
 
-# encode target for classification if still object
-if plan.get("task_type") == "classification":
-    if clean_df[target_column].dtype == object:
-        clean_df[target_column] = LabelEncoder().fit_transform(
-            clean_df[target_column].astype(str)
-        )
-        print(f"  🎯 Target  [{target_column}] → LabelEncoder")
+    # Encode target for classification if still object
+    if plan.get("task_type") == "classification":
+        if clean_df[target_column].dtype == object:
+            clean_df[target_column] = LabelEncoder().fit_transform(
+                clean_df[target_column].astype(str)
+            )
+            print(f"  [TARGET] Target  [{target_column}] -> LabelEncoder")
 
-print(f"\n✅ Clean dataset shape: {clean_df.shape}")
-print(f"   Nulls remaining    : {int(clean_df.isnull().sum().sum())}")
+    print(f"\n[OK] Clean dataset shape: {clean_df.shape}")
+    print(f"     Nulls remaining  : {int(clean_df.isnull().sum().sum())}")
 
-# ─────────────────────────────────────────────
-# GEMINI 2 — PIPELINE REVIEW
-# ─────────────────────────────────────────────
-prompt_2 = f"""
+    # ══════════════════════════════════════════
+    # AI-2 — PIPELINE REVIEW
+    # ══════════════════════════════════════════
+    prompt_2 = f"""
 You are a Senior ML Engineer doing a final pipeline review.
 
 The following preprocessing was applied. Check if everything is correct.
@@ -234,38 +263,39 @@ Return ONLY raw JSON — no markdown, no explanation:
 }}
 """
 
-raw_2  = call_gemini(prompt_2, "Gemini 2 — reviewing pipeline")
-raw_2  = re.sub(r"```json|```", "", raw_2).strip()
-review = json.loads(raw_2)
+    raw_2 = call_gemini(client, prompt_2, "AI-2 — Reviewing pipeline")
+    raw_2 = re.sub(r"```json|```", "", raw_2).strip()
+    review = json.loads(raw_2)
 
-print("\n📊 PIPELINE REVIEW:")
-print(json.dumps(review, indent=2))
+    print("\n[REVIEW] PIPELINE REVIEW:")
+    print(json.dumps(review, indent=2))
 
-# ─────────────────────────────────────────────
-# SAVE OUTPUTS
-# ─────────────────────────────────────────────
-clean_df.to_csv("clean_dataset.csv", index=False)
+    # ══════════════════════════════════════════
+    # SAVE OUTPUTS
+    # ══════════════════════════════════════════
+    clean_csv_path = os.path.join(project_dir, "clean_dataset.csv")
+    clean_df.to_csv(clean_csv_path, index=False)
 
-final_models = [m["model"] for m in review.get("final_models", [])]
+    final_models = [m["model"] for m in review.get("final_models", [])]
 
-with open("pipeline_plan.json", "w") as f:
-    json.dump({
-        "preprocessing_plan": plan,
-        "pipeline_review":    review,
-        "final_models":       final_models,
-        "clean_shape":        list(clean_df.shape),
-        "target_column":      target_column,
-        "task_type":          plan.get("task_type")
-    }, f, indent=2)
+    pipeline_json_path = os.path.join(project_dir, "pipeline_plan.json")
+    with open(pipeline_json_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "preprocessing_plan": plan,
+            "pipeline_review": review,
+            "final_models": final_models,
+            "clean_shape": list(clean_df.shape),
+            "target_column": target_column,
+            "task_type": plan.get("task_type"),
+        }, f, indent=2)
 
-# ─────────────────────────────────────────────
-# SUMMARY
-# ─────────────────────────────────────────────
-print(f"\n{'─'*50}")
-print(f"  💾 clean_dataset.csv   saved")
-print(f"  📁 pipeline_plan.json  saved")
-print(f"  ✅ Pipeline OK : {review.get('pipeline_ok')}")
-print(f"  ⚠️  Issues     : {review.get('issues', [])}")
-print(f"  🎯 Verdict     : {review.get('verdict', '')}")
-print(f"  🤖 Train these : {final_models}")
-print(f"{'─'*50}")
+    print(f"\n{'─' * 50}")
+    print(f"  [SAVED] clean_dataset.csv")
+    print(f"  [SAVED] pipeline_plan.json")
+    print(f"  [OK]    Pipeline OK : {review.get('pipeline_ok')}")
+    print(f"  [WARN]  Issues      : {review.get('issues', [])}")
+    print(f"  [INFO]  Verdict     : {review.get('verdict', '')}")
+    print(f"  [INFO]  Train these : {final_models}")
+    print(f"{'_' * 50}")
+
+    return clean_df, plan, review
