@@ -1,13 +1,13 @@
 """
-╔══════════════════════════════════════════════════════════════╗
-║          AI PREPROCESSING — data_processing.py               ║
-║                                                              ║
-║  Receives raw DataFrame + analysis report from main.py.      ║
-║  Uses two Gemini calls:                                      ║
-║    AI-1  →  Build a preprocessing plan (JSON)                ║
-║    AI-2  →  Review the applied pipeline                      ║
-║  Returns the clean DataFrame, plan, and review.              ║
-╚══════════════════════════════════════════════════════════════╝
++==============================================================+
+|          AI PREPROCESSING - data_processing.py               |
+|                                                              |
+|  Receives raw DataFrame + analysis report from main.py.      |
+|  Uses two Gemini calls:                                      |
+|    AI-1  ->  Build a preprocessing plan (JSON)                |
+|    AI-2  ->  Review the applied pipeline                      |
+|  Returns the clean DataFrame, plan, and review.              |
++==============================================================+
 """
 
 import os
@@ -27,9 +27,9 @@ from sklearn.preprocessing import (
 )
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # SPINNER (console progress indicator)
-# ─────────────────────────────────────────────
+# _____________________________________________
 def spinner_while(label: str = "Thinking"):
     """Start a console spinner. Returns a threading.Event to stop it."""
     stop_event = threading.Event()
@@ -48,16 +48,16 @@ def spinner_while(label: str = "Thinking"):
     return stop_event
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # GEMINI CALL (with retry + spinner)
-# ─────────────────────────────────────────────
-def call_gemini(client, prompt: str, label: str = "Gemini") -> str:
+# _____________________________________________
+def call_gemini(client, prompt: str, label: str = "Gemini", model_name: str = "gemini-3-flash-preview") -> str:
     """Call Gemini with retries and a spinner."""
     stop = spinner_while(label)
     for attempt in range(3):
         try:
             r = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=model_name,
                 contents=prompt,
             )
             stop.set()
@@ -72,9 +72,9 @@ def call_gemini(client, prompt: str, label: str = "Gemini") -> str:
                 raise
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # PREPROCESSING FUNCTIONS
-# ─────────────────────────────────────────────
+# _____________________________________________
 def drop_columns(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     cols = [c for c in cols if c in df.columns]
     if cols:
@@ -123,15 +123,16 @@ def apply_scaler(df: pd.DataFrame, cols: list, method: str, target: str) -> pd.D
     return df
 
 
-# ─────────────────────────────────────────────
-# PUBLIC ENTRY POINT — called from main.py
-# ─────────────────────────────────────────────
+# _____________________________________________
+# PUBLIC ENTRY POINT - called from main.py
+# _____________________________________________
 def run_preprocessing(
     df: pd.DataFrame,
     target_column: str,
     task_type: str,
     report_path: str,
     project_dir: str,
+    model_name: str = "gemini-3-flash-preview",
 ) -> tuple:
     """
     Run the two-AI preprocessing pipeline.
@@ -142,20 +143,20 @@ def run_preprocessing(
         raise EnvironmentError("GOOGLE_API_KEY not found. Check your .env file.")
     client = genai.Client(api_key=api_key)
 
-    # ── Load the analysis report
+    # __ Load the analysis report
     with open(report_path, "r", encoding="utf-8", errors="ignore") as f:
         analysis_report = f.read()[:15000]
 
-    # ══════════════════════════════════════════
-    # AI-1 — PREPROCESSING PLAN
-    # ══════════════════════════════════════════
+    # ==========================================
+    # AI-1 - PREPROCESSING PLAN
+    # ==========================================
     prompt_1 = f"""
 You are a Senior ML Engineer.
 
 Return a STRICT JSON preprocessing plan based on the dataset analysis report below.
 
 RULES:
-- Return ONLY valid raw JSON — no markdown, no ```json, no explanation
+- Return ONLY valid raw JSON - no markdown, no ```json, no explanation
 - Use EXACT column names from the dataset
 - Never include the target column in drop/impute/encode/scale lists
 
@@ -189,16 +190,16 @@ ANALYSIS REPORT:
 {analysis_report}
 """
 
-    raw_1 = call_gemini(client, prompt_1, "AI-1 — Building preprocessing plan")
+    raw_1 = call_gemini(client, prompt_1, "AI-1 - Building preprocessing plan", model_name)
     raw_1 = re.sub(r"```json|```", "", raw_1).strip()
     plan = json.loads(raw_1)
 
     print("\n[PLAN] PREPROCESSING PLAN:")
     print(json.dumps(plan, indent=2))
 
-    # ══════════════════════════════════════════
+    # ==========================================
     # EXECUTE PREPROCESSING
-    # ══════════════════════════════════════════
+    # ==========================================
     print("\n[RUN] Applying preprocessing...\n")
     clean_df = df.copy()
 
@@ -224,9 +225,9 @@ ANALYSIS REPORT:
     print(f"\n[OK] Clean dataset shape: {clean_df.shape}")
     print(f"     Nulls remaining  : {int(clean_df.isnull().sum().sum())}")
 
-    # ══════════════════════════════════════════
-    # AI-2 — PIPELINE REVIEW
-    # ══════════════════════════════════════════
+    # ==========================================
+    # AI-2 - PIPELINE REVIEW
+    # ==========================================
     prompt_2 = f"""
 You are a Senior ML Engineer doing a final pipeline review.
 
@@ -248,7 +249,7 @@ Stats:
 TASK: {plan.get("task_type", "classification").upper()}
 TARGET: {target_column}
 
-Return ONLY raw JSON — no markdown, no explanation:
+Return ONLY raw JSON - no markdown, no explanation:
 {{
   "pipeline_ok": true or false,
   "issues": [],
@@ -263,16 +264,16 @@ Return ONLY raw JSON — no markdown, no explanation:
 }}
 """
 
-    raw_2 = call_gemini(client, prompt_2, "AI-2 — Reviewing pipeline")
+    raw_2 = call_gemini(client, prompt_2, "AI-2 - Reviewing pipeline", model_name)
     raw_2 = re.sub(r"```json|```", "", raw_2).strip()
     review = json.loads(raw_2)
 
     print("\n[REVIEW] PIPELINE REVIEW:")
     print(json.dumps(review, indent=2))
 
-    # ══════════════════════════════════════════
+    # ==========================================
     # SAVE OUTPUTS
-    # ══════════════════════════════════════════
+    # ==========================================
     clean_csv_path = os.path.join(project_dir, "clean_dataset.csv")
     clean_df.to_csv(clean_csv_path, index=False)
 
@@ -289,7 +290,7 @@ Return ONLY raw JSON — no markdown, no explanation:
             "task_type": plan.get("task_type"),
         }, f, indent=2)
 
-    print(f"\n{'─' * 50}")
+    print(f"\n{'_' * 50}")
     print(f"  [SAVED] clean_dataset.csv")
     print(f"  [SAVED] pipeline_plan.json")
     print(f"  [OK]    Pipeline OK : {review.get('pipeline_ok')}")

@@ -1,12 +1,12 @@
 """
-╔══════════════════════════════════════════════════════════════╗
-║             MODEL TRAINING — train_model.py                  ║
-║                                                              ║
-║  Receives the clean DataFrame, target, task type, and        ║
-║  pipeline review from main.py.                               ║
-║  Auto-detects classification vs regression and trains         ║
-║  the recommended models with evaluation metrics.             ║
-╚══════════════════════════════════════════════════════════════╝
++==============================================================+
+|             MODEL TRAINING - train_model.py                  |
+|                                                              |
+|  Receives the clean DataFrame, target, task type, and        |
+|  pipeline review from main.py.                               |
+|  Auto-detects classification vs regression and trains         |
+|  the recommended models with evaluation metrics.             |
++==============================================================+
 """
 
 import os
@@ -23,7 +23,7 @@ from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, r2_score,
 )
 
-# ── Classification models
+# __ Classification models
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import (
     RandomForestClassifier, GradientBoostingClassifier,
@@ -33,15 +33,15 @@ from sklearn.svm import SVC, SVR
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-# ── Regression models
+# __ Regression models
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
 
 warnings.filterwarnings("ignore")
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # MODEL REGISTRY
-# ─────────────────────────────────────────────
+# _____________________________________________
 CLASSIFICATION_MODELS = {
     "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
     "RandomForestClassifier": RandomForestClassifier(n_estimators=100, random_state=42),
@@ -64,9 +64,9 @@ REGRESSION_MODELS = {
 }
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # RESOLVE MODEL NAMES FROM AI REVIEW
-# ─────────────────────────────────────────────
+# _____________________________________________
 def resolve_models(review: dict, task_type: str) -> list:
     """
     Map the AI-recommended model names to our registry keys.
@@ -97,9 +97,9 @@ def resolve_models(review: dict, task_type: str) -> list:
     return list(dict.fromkeys(resolved))  # dedupe preserving order
 
 
-# ─────────────────────────────────────────────
-# TRAIN & EVALUATE — CLASSIFICATION
-# ─────────────────────────────────────────────
+# _____________________________________________
+# TRAIN & EVALUATE - CLASSIFICATION
+# _____________________________________________
 def train_classification(X_train, X_test, y_train, y_test, model_names: list) -> list:
     """Train classification models and return results list."""
     results = []
@@ -136,14 +136,14 @@ def train_classification(X_train, X_test, y_train, y_test, model_names: list) ->
 
         print(f"     Accuracy : {acc:.4f}")
         print(f"     F1 Score : {f1:.4f}")
-        print(f"     CV Mean  : {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+        print(f"     CV Mean  : {cv_scores.mean():.4f} +/- {cv_scores.std():.4f}")
 
     return results
 
 
-# ─────────────────────────────────────────────
-# TRAIN & EVALUATE — REGRESSION
-# ─────────────────────────────────────────────
+# _____________________________________________
+# TRAIN & EVALUATE - REGRESSION
+# _____________________________________________
 def train_regression(X_train, X_test, y_train, y_test, model_names: list) -> list:
     """Train regression models and return results list."""
     results = []
@@ -179,14 +179,14 @@ def train_regression(X_train, X_test, y_train, y_test, model_names: list) -> lis
         print(f"     R2 Score : {r2:.4f}")
         print(f"     RMSE     : {rmse:.4f}")
         print(f"     MAE      : {mae:.4f}")
-        print(f"     CV Mean  : {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+        print(f"     CV Mean  : {cv_scores.mean():.4f} +/- {cv_scores.std():.4f}")
 
     return results
 
 
-# ─────────────────────────────────────────────
-# PUBLIC ENTRY POINT — called from main.py
-# ─────────────────────────────────────────────
+# _____________________________________________
+# PUBLIC ENTRY POINT - called from main.py
+# _____________________________________________
 def run_training(
     clean_df: pd.DataFrame,
     target_column: str,
@@ -198,15 +198,15 @@ def run_training(
     Split data, resolve models from AI review, train, evaluate,
     and save results to project_dir.
     """
-    # ── Validate target
+    # __ Validate target
     if target_column not in clean_df.columns:
         print(f"[ERROR] Target column '{target_column}' not found in clean dataset.")
         return
 
-    # ── Drop any remaining nulls in target
+    # __ Drop any remaining nulls in target
     clean_df = clean_df.dropna(subset=[target_column])
 
-    # ── Split features / target
+    # __ Split features / target
     X = clean_df.drop(columns=[target_column])
     y = clean_df[target_column]
 
@@ -216,22 +216,22 @@ def run_training(
         print(f"  [WARN] Dropping unencoded columns from features: {non_numeric}")
         X = X.drop(columns=non_numeric)
 
-    # ── Handle remaining NaN in features
+    # __ Handle remaining NaN in features
     if X.isnull().sum().sum() > 0:
         print("  [FIX] Filling remaining NaN in features with column median...")
         X = X.fillna(X.median())
 
-    # ── Train / Test split
+    # __ Train / Test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
     print(f"\n  [SPLIT] Train shape: {X_train.shape}  |  Test shape: {X_test.shape}")
 
-    # ── Resolve which models to train
+    # __ Resolve which models to train
     model_names = resolve_models(review, task_type)
     print(f"  [MODELS] Models to train: {model_names}")
 
-    # ── Train
+    # __ Train
     if task_type == "classification":
         results = train_classification(X_train, X_test, y_train, y_test, model_names)
         # Find best model
@@ -245,7 +245,7 @@ def run_training(
             best = max(results, key=lambda r: r["r2_score"])
             print(f"\n  >> BEST MODEL: {best['model']}  (R2 = {best['r2_score']:.4f})")
 
-    # ── Save training results
+    # __ Save training results
     output = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "task_type": task_type,
@@ -264,7 +264,7 @@ def run_training(
 
     print(f"\n  [SAVED] Training results saved -> {results_path}")
 
-    # ── Print summary table
+    # __ Print summary table
     print(f"\n{'=' * 60}")
     print("  TRAINING SUMMARY")
     print(f"{'=' * 60}")

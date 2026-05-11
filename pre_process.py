@@ -1,11 +1,11 @@
 """
-╔══════════════════════════════════════════════════════════════╗
-║            AI DATA ANALYSIS — pre_process.py                 ║
-║                                                              ║
-║  Receives a DataFrame, target column, and task type from     ║
-║  main.py.  Uses Gemini to produce a structured analysis      ║
-║  report and saves it to the project folder.                  ║
-╚══════════════════════════════════════════════════════════════╝
++==============================================================+
+|            AI DATA ANALYSIS - pre_process.py                 |
+|                                                              |
+|  Receives a DataFrame, target column, and task type from     |
+|  main.py.  Uses Gemini to produce a structured analysis      |
+|  report and saves it to the project folder.                  |
++==============================================================+
 """
 
 import os
@@ -16,9 +16,9 @@ from datetime import datetime
 from google import genai
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # CORRELATION-BASED DROP DETECTION
-# ─────────────────────────────────────────────
+# _____________________________________________
 def get_highly_correlated_columns(df: pd.DataFrame, threshold: float = 0.90):
     """Return (columns_to_drop, pair_details) for correlations above *threshold*."""
     numeric_df = df.select_dtypes(include="number")
@@ -44,14 +44,14 @@ def get_highly_correlated_columns(df: pd.DataFrame, threshold: float = 0.90):
     return list(set(to_drop)), pairs
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # FULL DATAFRAME ANALYSIS
-# ─────────────────────────────────────────────
+# _____________________________________________
 def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) -> dict:
     """Return a dictionary with an exhaustive statistical profile of *df*."""
     analysis = {}
 
-    # ── Basic info
+    # __ Basic info
     analysis["head"] = df.head().to_string()
     analysis["tail"] = df.tail().to_string()
     analysis["shape"] = df.shape
@@ -63,7 +63,7 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
     analysis["size"] = df.size
     analysis["memory_mb"] = round(df.memory_usage(deep=True).sum() / 1024**2, 4)
 
-    # ── Column type groups
+    # __ Column type groups
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     categorical_cols = df.select_dtypes(include="object").columns.tolist()
     boolean_cols = df.select_dtypes(include="bool").columns.tolist()
@@ -74,28 +74,28 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
     analysis["boolean_columns"] = boolean_cols
     analysis["datetime_columns"] = datetime_cols
 
-    # ── Global stats
+    # __ Global stats
     analysis["describe"] = df.describe(include="all").to_string()
     analysis["skewness"] = df.skew(numeric_only=True).to_string()
     analysis["kurtosis"] = df.kurt(numeric_only=True).to_string()
     analysis["correlation"] = df.corr(numeric_only=True).to_string()
     analysis["covariance"] = df.cov(numeric_only=True).to_string()
 
-    # ── Null summary
+    # __ Null summary
     total_nulls = int(df.isnull().sum().sum())
     analysis["total_null_values"] = total_nulls
     if total_nulls > 0:
         analysis["null_values"] = df.isnull().sum().to_string()
         analysis["null_percentage"] = (df.isnull().sum() / len(df) * 100).to_string()
 
-    # ── Duplicate summary
+    # __ Duplicate summary
     total_dupes = int(df.duplicated().sum())
     analysis["total_duplicates"] = total_dupes
     analysis["has_duplicates"] = total_dupes > 0
     if total_dupes > 0:
         analysis["duplicate_rows_preview"] = df[df.duplicated()].head(5).to_string()
 
-    # ── Special flags
+    # __ Special flags
     analysis["constant_columns"] = [c for c in df.columns if df[c].nunique() == 1]
     analysis["high_cardinality_columns"] = [c for c in df.columns if df[c].nunique() > 50]
     analysis["low_cardinality_columns"] = [c for c in df.columns if df[c].nunique() < 10]
@@ -103,11 +103,11 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
     analysis["negative_values"] = (df.select_dtypes(include="number") < 0).sum().to_string()
     analysis["infinite_values"] = np.isinf(df.select_dtypes(include="number")).sum().to_string()
 
-    # ── Pre-computed correlation drops
+    # __ Pre-computed correlation drops
     analysis["highly_correlated_drop_candidates"] = corr_drop_cols
     analysis["correlation_pairs"] = corr_pairs
 
-    # ── Per-column deep analysis
+    # __ Per-column deep analysis
     per_column = {}
     for col in df.columns:
         col_data = df[col]
@@ -147,15 +147,15 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
 
         # Cardinality tag
         if col_data.nunique() == 1:
-            info["cardinality_tag"] = "CONSTANT — drop this column"
+            info["cardinality_tag"] = "CONSTANT - drop this column"
         elif col_data.nunique() == 2:
             info["cardinality_tag"] = "BINARY"
         elif col_data.nunique() <= 5:
-            info["cardinality_tag"] = "LOW (<=5) — OneHotEncoder"
+            info["cardinality_tag"] = "LOW (<=5) - OneHotEncoder"
         elif col_data.nunique() <= 15:
-            info["cardinality_tag"] = "MEDIUM (6-15) — OrdinalEncoder or TargetEncoder"
+            info["cardinality_tag"] = "MEDIUM (6-15) - OrdinalEncoder or TargetEncoder"
         else:
-            info["cardinality_tag"] = "HIGH (>15) — TargetEncoder or HashingEncoder"
+            info["cardinality_tag"] = "HIGH (>15) - TargetEncoder or HashingEncoder"
 
         # Numeric-only stats
         if col in numeric_cols:
@@ -193,7 +193,7 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
                 info["zero_count"] = zero_count
             if neg_count > 0:
                 info["negative_count"] = neg_count
-                info["negative_warning"] = "Log transform will fail — use Log1p or shift first"
+                info["negative_warning"] = "Log transform will fail - use Log1p or shift first"
             if inf_count > 0:
                 info["infinite_count"] = inf_count
                 info["infinite_action"] = "Replace inf with NaN then impute"
@@ -204,7 +204,7 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
             info["mode"] = str(col_data.mode()[0]) if not col_data.mode().empty else "N/A"
             if null_count / len(df) > 0.4:
                 info["drop_suggestion"] = (
-                    f"DROP — {round(null_count / len(df) * 100, 1)}% nulls in categorical column"
+                    f"DROP - {round(null_count / len(df) * 100, 1)}% nulls in categorical column"
                 )
 
         per_column[col] = info
@@ -213,9 +213,9 @@ def analyze_dataframe(df: pd.DataFrame, corr_drop_cols: list, corr_pairs: list) 
     return analysis
 
 
-# ─────────────────────────────────────────────
+# _____________________________________________
 # GEMINI PROMPT
-# ─────────────────────────────────────────────
+# _____________________________________________
 def build_prompt(target_column: str, task_type: str, corr_pairs: list) -> str:
     """Return the full prompt template for Gemini analysis."""
     return f"""You are an elite Senior Data Scientist and ML Engineer.
@@ -228,55 +228,55 @@ So every instruction MUST be:
 - Justified (why this action)
 - Ordered (steps in the right sequence)
 
-──────────────────────────────────────────────
+______________________________________________
 TASK TYPE (AUTO-DETECTED): {task_type.upper()}
 TARGET COLUMN: {target_column}
-──────────────────────────────────────────────
+______________________________________________
 
 HIGHLY CORRELATED COLUMNS TO DROP (pre-computed, threshold=0.90):
 {corr_pairs}
 These were detected automatically. Confirm or override based on domain reasoning.
 
-──────────────────────────────────────────────
+______________________________________________
 ANALYSIS SECTIONS TO COVER:
-──────────────────────────────────────────────
+______________________________________________
 
-═══════════════════════════════════════════════
+===============================================
             DATASET OVERVIEW
-═══════════════════════════════════════════════
+===============================================
 - Rows, columns, memory usage
 - General data quality score (0-100)
 - Is this dataset ML-ready as-is? Yes/No + reason
 
-═══════════════════════════════════════════════
+===============================================
           DATA QUALITY ISSUES
-═══════════════════════════════════════════════
+===============================================
 - List all issues found: nulls, duplicates, constants, infinities, negatives
 - Severity: Critical / Warning / Info for each
 
-═══════════════════════════════════════════════
+===============================================
           MISSING VALUE ANALYSIS
-═══════════════════════════════════════════════
+===============================================
 For each column with nulls:
   Column | % Missing | Recommended Strategy | Technique
 
-═══════════════════════════════════════════════
+===============================================
           DUPLICATE ANALYSIS
-═══════════════════════════════════════════════
+===============================================
 - Count and % of duplicates
 - Action: Drop or Keep, with justification
 
-═══════════════════════════════════════════════
+===============================================
         NUMERICAL FEATURE ANALYSIS
-═══════════════════════════════════════════════
+===============================================
 For each numeric column:
   - Range, mean, skewness, outliers present?
   - Recommended scaling: StandardScaler / MinMaxScaler / RobustScaler / Log Transform
   - Justification for each choice
 
-═══════════════════════════════════════════════
+===============================================
        CATEGORICAL FEATURE ANALYSIS
-═══════════════════════════════════════════════
+===============================================
 For each categorical column:
   - Cardinality (unique count)
   - Recommended encoding:
@@ -287,53 +287,53 @@ For each categorical column:
   - Is this an INPUT feature or the OUTPUT (target)?
   - For the TARGET column in classification: LabelEncoder if not already numeric
 
-═══════════════════════════════════════════════
+===============================================
            OUTLIER ANALYSIS
-═══════════════════════════════════════════════
+===============================================
 For each numeric column:
   - Outliers detected? (IQR method)
   - Action: Clip / Winsorize / Log Transform / Keep
   - Justification
 
-═══════════════════════════════════════════════
+===============================================
      CORRELATION & MULTICOLLINEARITY
-═══════════════════════════════════════════════
+===============================================
 - Confirm columns to drop from the pre-computed list above
 - Any additional drops based on domain reasoning
 - VIF risk columns (if any)
 
-═══════════════════════════════════════════════
+===============================================
        FEATURE ENGINEERING IDEAS
-═══════════════════════════════════════════════
+===============================================
 - Suggest new features to create from existing ones
 - Date/time decomposition if applicable
 - Interaction terms or ratios worth trying
 - Binning suggestions for skewed columns
 
-═══════════════════════════════════════════════
+===============================================
       PREPROCESSING PIPELINE (ORDERED)
-═══════════════════════════════════════════════
+===============================================
 Give exact step-by-step pipeline in this format:
 
 Step 1 | Action | Columns | Technique | Reason
 Step 2 | ...
 
-═══════════════════════════════════════════════
+===============================================
           COLUMNS TO DROP
-═══════════════════════════════════════════════
+===============================================
 Final consolidated drop list with reason for each:
   Column | Reason
 
-═══════════════════════════════════════════════
+===============================================
          ML READINESS SCORE
-═══════════════════════════════════════════════
+===============================================
 Score: X/100
 Reasoning: (brief)
 After preprocessing estimated score: Y/100
 
-═══════════════════════════════════════════════
+===============================================
         RECOMMENDED ML MODELS
-═══════════════════════════════════════════════
+===============================================
 Task: {task_type.upper()}
 
 Top 3 models with rationale:
@@ -344,37 +344,38 @@ Top 3 models with rationale:
 Baseline model to start with: (e.g., LogisticRegression / LinearRegression)
 Hyperparameter tuning priority: High / Medium / Low
 
-═══════════════════════════════════════════════
+===============================================
          RISKS & LIMITATIONS
-═══════════════════════════════════════════════
+===============================================
 - Data leakage risks
 - Class imbalance (for classification)
 - Overfitting risk (small dataset?)
 - Any ethical/bias risks in features
 
-═══════════════════════════════════════════════
+===============================================
             FINAL SUMMARY
-═══════════════════════════════════════════════
+===============================================
 - 5-line summary of what this dataset is, what the task is, and the preprocessing plan
 - One-line recommendation for the downstream AI agent
 
 CRITICAL RULES:
-✓ Use ONLY data provided — no hallucination
+✓ Use ONLY data provided - no hallucination
 ✓ Use EXACT column names from the dataset
 ✓ Every recommendation must have a WHY
-✓ Downstream AI will implement this directly — be precise
-✓ Task type is {task_type.upper()} — all model and encoding decisions must reflect this
+✓ Downstream AI will implement this directly - be precise
+✓ Task type is {task_type.upper()} - all model and encoding decisions must reflect this
 """
 
 
-# ─────────────────────────────────────────────
-# PUBLIC ENTRY POINT — called from main.py
-# ─────────────────────────────────────────────
+# _____________________________________________
+# PUBLIC ENTRY POINT - called from main.py
+# _____________________________________________
 def run_analysis(
     df: pd.DataFrame,
     target_column: str,
     task_type: str,
     project_dir: str,
+    model_name: str = "gemini-3-flash-preview",
 ) -> str:
     """
     Run the full AI analysis pipeline and return the path to the saved report.
@@ -409,7 +410,7 @@ def run_analysis(
     for attempt in range(3):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=model_name,
                 contents=full_prompt,
             )
             response_text = response.text

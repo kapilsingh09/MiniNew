@@ -1,0 +1,144 @@
+
+========================================================================
+                   AUTOMATED DATA ANALYSIS REPORT
+========================================================================
+
+Generated   : 2026-05-11 22:19:57
+Target Col  : sex
+Task Type   : CLASSIFICATION
+Dataset     : 104 rows x 14 columns
+Memory      : 0.02 MB
+Corr Drops  : ['site']
+
+________________________________________________________________________________
+
+This document provides the technical specification for a preprocessing and training pipeline to classify the **sex** of subjects based on biological measurements.
+
+===============================================
+            DATASET OVERVIEW
+===============================================
+- **Rows:** 104 | **Columns:** 14
+- **Memory Usage:** 0.0215 MB
+- **General Data Quality Score:** 88/100
+- **ML-ready as-is?** NO.
+  - *Reasoning:* Contains an incremental ID column (`case`), redundant site information, categorical strings, and missing values in `age` and `footlgth`.
+
+===============================================
+          DATA QUALITY ISSUES
+===============================================
+1. **Redundant ID:** `case` is an incremental index (100% unique). (Severity: Warning)
+2. **High Correlation:** `site` and `case` are 97% correlated. (Severity: Warning)
+3. **Missing Values:** `age` (2) and `footlgth` (1). (Severity: Info)
+4. **Skewed Distribution:** `skullw` has a skewness of 1.01 and 7.7% outliers. (Severity: Warning)
+
+===============================================
+          MISSING VALUE ANALYSIS
+===============================================
+Column | % Missing | Recommended Strategy | Technique
+---|---|---|---
+`age` | 1.92% | Impute | Median Imputer (Ordinal-like nature)
+`footlgth` | 0.96% | Impute | Mean Imputer (Skew is near zero: 0.09)
+
+===============================================
+          DUPLICATE ANALYSIS
+===============================================
+- **Count:** 0 (0%)
+- **Action:** None required.
+
+===============================================
+        NUMERICAL FEATURE ANALYSIS
+===============================================
+Column | Action | Scaling | Justification
+---|---|---|---
+`age` | Impute | StandardScaler | Near-normal after imputation.
+`hdlngth` | Scale | RobustScaler | Contains 2.88% outliers.
+`skullw` | Log + Scale | RobustScaler | High skew (1.00) and 7.69% outliers.
+`totlngth` | Scale | StandardScaler | Low skew, no outliers.
+`taill` | Scale | RobustScaler | Contains 3.85% outliers.
+`footlgth` | Impute + Scale | StandardScaler | Low skew (0.09), no outliers.
+`earconch` | Scale | StandardScaler | Low skew, no outliers.
+`eye` | Scale | RobustScaler | Minimal outliers present.
+`chest` | Scale | RobustScaler | Minimal outliers present.
+`belly` | Scale | RobustScaler | Contains 2.88% outliers.
+
+===============================================
+       CATEGORICAL FEATURE ANALYSIS
+===============================================
+Column | Cardinality | Encoding | Type | Reason
+---|---|---|---|---
+`Pop` | 2 (Binary) | OneHotEncoder | Input | Binary feature ('other', 'Vic').
+`sex` | 2 (Binary) | LabelEncoder | **TARGET** | 'm'/'f' to 0/1.
+
+===============================================
+           OUTLIER ANALYSIS
+===============================================
+- **Target Column:** `skullw`
+- **Action:** Clip (Winsorize) at [5th, 95th] percentiles.
+- **Justification:** High kurtosis (2.47) and skew suggest extreme values that may disproportionately influence linear models.
+
+===============================================
+     CORRELATION & MULTICOLLINEARITY
+===============================================
+- **Confirm Drop:** `site`. (Correlation 0.97 with `case`).
+- **Additional Drop:** `case`. (It is an incremental ID/Primary Key, not a biological feature).
+
+===============================================
+       FEATURE ENGINEERING IDEAS
+===============================================
+1. **Ratio Feature:** `skull_ratio` = `skullw` / `hdlngth` (Biological proportion often differs by sex).
+2. **Body Dimension Ratio:** `length_to_belly` = `totlngth` / `belly`.
+3. **Head Factor:** `head_vol_approx` = `hdlngth` * `skullw` * `eye`.
+
+===============================================
+      PREPROCESSING PIPELINE (ORDERED)
+===============================================
+Step 1 | Drop | `case`, `site` | `df.drop()` | Remove non-predictive IDs and multicollinear columns.
+Step 2 | Impute | `age`, `footlgth` | SimpleImputer | Handle missing values before scaling.
+Step 3 | Engineering | `skull_ratio`, `length_to_belly` | Custom Transformer | Create biological ratios.
+Step 4 | Transform | `skullw` | `np.log1p` | Reduce positive skewness (1.007).
+Step 5 | Encode | `Pop` | OneHotEncoder(drop='first') | Convert categorical to binary numeric.
+Step 6 | Scale | See Numerical Analysis | Robust/StandardScaler | Normalize features based on outlier presence.
+Step 7 | Target Encode | `sex` | LabelEncoder | Convert target 'm'/'f' to 0/1.
+
+===============================================
+          COLUMNS TO DROP
+===============================================
+Column | Reason
+---|---
+`case` | Unique row identifier; adds noise/overfitting.
+`site` | 97% correlation with `case`; redundant location data.
+
+===============================================
+         ML READINESS SCORE
+===============================================
+**Score: 75/100**
+- **Reasoning:** Small sample size (N=104) is the primary constraint. Features are high-quality biological measurements, but outliers in `skullw` must be handled.
+- **After Preprocessing Score:** 95/100
+
+===============================================
+        RECOMMENDED ML MODELS
+===============================================
+**Task: BINARY CLASSIFICATION**
+
+1. **Logistic Regression (L2 Regularized)** | Baseline; works exceptionally well on small datasets with biological measurements.
+2. **Support Vector Classifier (SVC)** | Effective in high-dimensional spaces; robust to small sample sizes when using RBF kernel.
+3. **Random Forest Classifier** | Captures non-linear relationships and interactions between body measurements automatically.
+
+- **Baseline:** Logistic Regression.
+- **Hyperparameter Tuning Priority:** High (due to small N, cross-validation is critical to prevent overfitting).
+
+===============================================
+         RISKS & LIMITATIONS
+===============================================
+- **Small Dataset (N=104):** Extremely high risk of overfitting. Use Stratified 5-Fold Cross-Validation.
+- **Class Imbalance:** 61m vs 43f (~58/42%). Slight imbalance; use `class_weight='balanced'` in models.
+- **Leakage:** Ensure `case` is dropped before any scaling or training.
+
+===============================================
+            FINAL SUMMARY
+===============================================
+This is a biological dataset (104 samples) for sex classification of possums based on 9+ morphometric measurements. The pipeline focuses on dropping ID noise, log-transforming skewed skull measurements, and using Robust scaling to manage outliers.
+**Recommendation:** Implement a `ColumnTransformer` applying `RobustScaler` to measurement columns and `StandardScaler` to others, followed by a Logistic Regression baseline.
+
+________________________________________________________________________________
+Report End: 2026-05-11 22:19:57
